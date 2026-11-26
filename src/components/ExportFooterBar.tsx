@@ -1,4 +1,4 @@
-import { Code2, Eye, FileDown, FileSpreadsheet, FileText, RotateCcw } from 'lucide-react';
+import { Camera, Code2, Eye, FileDown, FileSpreadsheet, FileText, RotateCcw } from 'lucide-react';
 
 interface ExportFooterBarProps {
   visibleCount: number;
@@ -6,6 +6,7 @@ interface ExportFooterBarProps {
   onDownloadWord: () => void;
   onDownloadPdf: () => void;
   onOpenPdfPreview: () => void;
+  onOpenFieldDocFromChecklist: () => void;
   onDownloadStandaloneHtml: () => void;
   onOpenResetModal: () => void;
 }
@@ -16,6 +17,7 @@ export function ExportFooterBar({
   onDownloadWord,
   onDownloadPdf,
   onOpenPdfPreview,
+  onOpenFieldDocFromChecklist,
   onDownloadStandaloneHtml,
   onOpenResetModal,
 }: ExportFooterBarProps) {
@@ -82,16 +84,27 @@ export function ExportFooterBar({
         </button>
       </div>
 
-      {/* Secondary Row: Standalone Single HTML Download & Reset */}
-      <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onDownloadStandaloneHtml}
-          className="min-h-[46px] px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-semibold text-sm flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-        >
-          <Code2 className="w-4 h-4 text-slate-600 shrink-0" aria-hidden="true" />
-          <span>Unduh Versi 1 File HTML (Standalone)</span>
-        </button>
+      {/* Secondary Row: FieldDoc Photo Bridge, Standalone Single HTML Download & Reset */}
+      <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <button
+            type="button"
+            onClick={onOpenFieldDocFromChecklist}
+            className="min-h-[46px] px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-sm flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+          >
+            <Camera className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>Buat Dokumentasi Foto (FieldDoc)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onDownloadStandaloneHtml}
+            className="min-h-[46px] px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-semibold text-sm flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+          >
+            <Code2 className="w-4 h-4 text-slate-600 shrink-0" aria-hidden="true" />
+            <span>Unduh Versi 1 File HTML (Standalone)</span>
+          </button>
+        </div>
 
         <button
           type="button"
@@ -105,3 +118,4 @@ export function ExportFooterBar({
     </section>
   );
 }
+

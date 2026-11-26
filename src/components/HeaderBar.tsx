@@ -1,4 +1,5 @@
 import { ClipboardCheck, FileDown, Plus, Printer } from 'lucide-react';
+import { PWAInstallButton } from './PWAControls';
 
 export type ActiveAppModule = 'checklist' | 'fielddoc' | 'archive';
 
@@ -75,8 +76,9 @@ export function HeaderBar({
           </button>
         </nav>
 
-        {/* Zone 3: Single Contextual Primary Action */}
-        <div className="flex items-center shrink-0">
+        {/* Zone 3: PWA Install (when eligible) + Single Contextual Primary Action */}
+        <div className="flex items-center gap-2 shrink-0">
+          <PWAInstallButton />
           {activeModule === 'checklist' && (
             <button
               type="button"

@@ -4,6 +4,7 @@ import {
   Check,
   Cloud,
   FileDown,
+  FileSpreadsheet,
   FileText,
   FolderOpen,
   LocateFixed,
@@ -55,6 +56,7 @@ interface FieldDocWorkspaceProps {
   onResetWorkspace: () => void;
   onSaveArchive: () => Promise<void>;
   onExportDocx: () => Promise<void>;
+  onExportExcel: () => Promise<void>;
   onExportPdf: () => Promise<void>;
   onToast: (msg: string, isError?: boolean) => void;
 }
@@ -76,6 +78,7 @@ export function FieldDocWorkspace({
   onResetWorkspace,
   onSaveArchive,
   onExportDocx,
+  onExportExcel,
   onExportPdf,
   onToast,
 }: FieldDocWorkspaceProps) {
@@ -189,7 +192,7 @@ export function FieldDocWorkspace({
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-600">
-            Dokumentasi foto lapangan dengan watermark GPS &amp; waktu otomatis, siap ekspor ke Word (`.docx`) dan PDF.
+            Dokumentasi foto lapangan dengan watermark GPS &amp; waktu otomatis, siap ekspor ke Excel (.xlsx), Word (.docx), dan PDF.
           </p>
         </div>
 
@@ -682,18 +685,28 @@ export function FieldDocWorkspace({
       {/* Bottom Export & Save Dock */}
       <section
         id="fdoc-export"
-        className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+        className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4"
       >
         <div className="space-y-0.5">
           <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
             Ekspor Dokumentasi &amp; Simpan Arsip
           </h3>
           <p className="text-xs sm:text-sm text-slate-600">
-            Unduh hasil dokumentasi foto ke format Word (.docx) atau PDF siap cetak, atau simpan ke Arsip Tim.
+            Unduh foto &amp; deskripsi rapi dalam Excel (.xlsx), Word (.docx), atau PDF siap cetak, atau simpan ke Arsip Tim.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 shrink-0">
+          <button
+            type="button"
+            disabled={busyExport}
+            onClick={() => void onExportExcel()}
+            className="min-h-[48px] px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white font-bold text-sm inline-flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>{busyExport ? 'Membuat...' : 'Export Excel (.xlsx)'}</span>
+          </button>
+
           <button
             type="button"
             disabled={busyExport}

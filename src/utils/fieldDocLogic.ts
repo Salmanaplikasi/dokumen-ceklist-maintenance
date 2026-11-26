@@ -139,7 +139,7 @@ export function createFreshFieldDocReport(opts?: {
 export function sanitizeFieldDocFilename(
   title: string,
   date: string,
-  ext: 'docx' | 'pdf'
+  ext: 'docx' | 'pdf' | 'xlsx'
 ): string {
   const safeTitle =
     title
@@ -287,20 +287,60 @@ export function wrapCanvasLines(
   maxWidth: number
 ): string[] {
   const out: string[] = [];
+  const safeMaxWidth = Math.max(12, maxWidth);
+
+  const splitLongToken = (token: string): string[] => {
+    if (measureWidth(token) <= safeMaxWidth) return [token];
+    const parts: string[] = [];
+    let chunk = '';
+    for (const ch of token) {
+      const nextChunk = chunk + ch;
+      if (chunk && measureWidth(nextChunk) > safeMaxWidth) {
+        parts.push(chunk);
+        chunk = ch;
+      } else {
+        chunk = nextChunk;
+      }
+    }
+    if (chunk) parts.push(chunk);
+    return parts;
+  };
+
   String(text || '')
+    .replace(/\r\n/g, '\n')
     .split('\n')
     .forEach((par) => {
+      if (!par) {
+        out.push('');
+        return;
+      }
       let line = '';
-      par.split(' ').forEach((word) => {
-        const candidate = line ? `${line} ${word}` : word;
-        if (measureWidth(candidate) > maxWidth && line) {
-          out.push(line);
-          line = word;
-        } else {
-          line = candidate;
-        }
+      const rawWords = par.split(' ');
+      rawWords.forEach((rawWord) => {
+        const chunks = splitLongToken(rawWord);
+        chunks.forEach((word) => {
+          const candidate = line ? `${line} ${word}` : word;
+          if (measureWidth(candidate) > safeMaxWidth && line) {
+            out.push(line);
+            line = word;
+          } else {
+            line = candidate;
+          }
+        });
       });
       out.push(line);
     });
   return out;
+}
+
+export function estimateWrappedLineCount(
+  text: string,
+  maxCharsPerLine: number
+): number {
+  const lines = wrapCanvasLines(
+    (s) => s.length,
+    text || '',
+    Math.max(8, maxCharsPerLine)
+  );
+  return Math.max(1, lines.length);
 }

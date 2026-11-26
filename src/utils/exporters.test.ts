@@ -141,3 +141,39 @@ test('buildStandaloneHtmlString embeds checklistData and CDN dependencies cleanl
   assert.ok(html.includes('const checklistData = ['));
   assert.ok(html.includes('Visually check for leaks.'));
 });
+
+test('Checklist Excel and Word exports handle long multi-line and unbroken remarks safely', async () => {
+  const longRemark =
+    'SN:CHWP01-2026-UNBROKENVERYLONGIDENTIFIERCODE998877665544332211\nBaris kedua temuan kebocoran seal mekanikal pada pompa chiller utama.';
+  const sample = mergeItemsWithResponses(checklistData.slice(0, 1), {
+    [checklistData[0].id]: { status: 'CRITICAL', remarks: longRemark },
+  });
+
+  const wb = await buildExcelWorkbook(
+    sample,
+    {
+      technicianName: 'Salman',
+      inspectionDate: '2026-11-26',
+      unitLocation: 'Basement Utility',
+      supervisorName: 'Andi',
+    },
+    'Chilled Water Pump',
+    'Monthly'
+  );
+  const ws = wb.getWorksheet('Checklist PM');
+  assert.ok(ws);
+  assert.ok((ws.getRow(10).height || 0) >= 60, 'Expected taller Excel row for multi-line unbroken remark');
+
+  const wordHtml = buildWordDocumentHtml(
+    sample,
+    {
+      technicianName: 'Salman',
+      inspectionDate: '2026-11-26',
+      unitLocation: 'Basement Utility',
+      supervisorName: 'Andi',
+    },
+    'Chilled Water Pump',
+    'Monthly'
+  );
+  assert.ok(wordHtml.includes('overflow-wrap: anywhere'));
+});

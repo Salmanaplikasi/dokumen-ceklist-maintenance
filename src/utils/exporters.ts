@@ -107,6 +107,39 @@ function triggerFileDownload(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function countWrappedLines(text: string, charsPerLine: number): number {
+  const safeLimit = Math.max(8, charsPerLine);
+  let total = 0;
+  for (const par of String(text || '').replace(/\r\n/g, '\n').split('\n')) {
+    if (!par) {
+      total += 1;
+      continue;
+    }
+    let lineLen = 0;
+    let linesInPar = 1;
+    for (const word of par.split(' ')) {
+      if (word.length > safeLimit) {
+        if (lineLen > 0) {
+          linesInPar += 1;
+          lineLen = 0;
+        }
+        const extra = Math.ceil(word.length / safeLimit);
+        linesInPar += extra - 1;
+        lineLen = word.length % safeLimit || safeLimit;
+      } else if (lineLen === 0) {
+        lineLen = word.length;
+      } else if (lineLen + 1 + word.length <= safeLimit) {
+        lineLen += 1 + word.length;
+      } else {
+        linesInPar += 1;
+        lineLen = word.length;
+      }
+    }
+    total += linesInPar;
+  }
+  return Math.max(1, total);
+}
+
 function estimateRowHeight(
   equipment: string,
   category: string,
@@ -115,12 +148,12 @@ function estimateRowHeight(
 ): number {
   const lines = Math.max(
     1,
-    Math.ceil(equipment.length / 24),
-    Math.ceil(category.length / 18),
-    Math.ceil(description.length / 44),
-    Math.ceil((remarks || '').length / 30)
+    countWrappedLines(equipment, 22),
+    countWrappedLines(category, 16),
+    countWrappedLines(description, 41),
+    countWrappedLines(remarks || '', 28)
   );
-  return Math.max(22, lines * 14.5 + 8);
+  return Math.max(24, lines * 15 + 10);
 }
 
 /**
@@ -1296,6 +1329,8 @@ export function buildWordDocumentHtml(
       border: 0.75pt solid #94A3B8;
       padding: 4pt 6pt;
       vertical-align: middle;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .meta-label {
       background-color: #F1F5F9;
@@ -1339,10 +1374,13 @@ export function buildWordDocumentHtml(
       padding: 4pt 5pt;
       vertical-align: middle;
       word-wrap: break-word;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .findings-table {
       margin-top: 9pt;
       font-size: 8.2pt;
+      table-layout: fixed;
       page-break-inside: avoid;
     }
     .findings-table th,
@@ -1350,6 +1388,9 @@ export function buildWordDocumentHtml(
       border: 0.75pt solid #FCA5A5;
       padding: 4pt 6pt;
       vertical-align: top;
+      word-wrap: break-word;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .sign-table {
       margin-top: 12pt;

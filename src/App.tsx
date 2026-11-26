@@ -84,6 +84,7 @@ import {
   FieldDocConfirmModal,
   FieldDocProfileModal,
 } from './components/FieldDocModals';
+import { OfflineIndicator } from './components/PWAControls';
 
 function loadInitialState(): PersistedChecklistState {
   if (typeof window !== 'undefined') {
@@ -171,6 +172,7 @@ export default function App() {
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
+  const [offlineReady, setOfflineReady] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [busyFieldDocExport, setBusyFieldDocExport] = useState(false);
   const [isFieldDocProfileOpen, setIsFieldDocProfileOpen] = useState(false);
@@ -291,12 +293,19 @@ export default function App() {
       }
     };
 
+    const handleOfflineReady = () => {
+      setOfflineReady(true);
+      showToast('Aplikasi sudah tersimpan di cache & siap dipakai offline.');
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('pwa:offline-ready', handleOfflineReady);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('pwa:offline-ready', handleOfflineReady);
       stopPrivateFirebaseConnection();
     };
   }, [showToast]);
@@ -720,7 +729,7 @@ export default function App() {
   }, [busyFieldDocExport, fieldDocReport, showToast]);
 
   const handleExportFieldDoc = useCallback(
-    async (kind: 'docx' | 'pdf') => {
+    async (kind: 'docx' | 'pdf' | 'xlsx') => {
       if (busyFieldDocExport) return;
       if (!fieldDocReport.title.trim()) {
         showToast('Harap isi judul pekerjaan terlebih dahulu.', true);
@@ -733,9 +742,13 @@ export default function App() {
         setFieldDocReport(saved);
         setArchiveReports(getSanitizedLocalReports());
         const filename = await exportFieldDocFile(saved, kind);
-        showToast(
-          `Laporan ${kind === 'docx' ? 'Word (.docx)' : 'PDF'} berhasil diunduh: ${filename}`
-        );
+        const label =
+          kind === 'docx'
+            ? 'Word (.docx)'
+            : kind === 'xlsx'
+              ? 'Excel (.xlsx)'
+              : 'PDF';
+        showToast(`Laporan ${label} berhasil diunduh: ${filename}`);
       } catch {
         showToast('Gagal membuat file export FieldDoc.', true);
       } finally {
@@ -846,6 +859,8 @@ export default function App() {
       />
 
       <main className="no-print max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-5 space-y-4 pb-16">
+        <OfflineIndicator isOnline={isOnline} offlineReady={offlineReady} />
+
         {/* Mobile 3-Module Switcher (keeps sticky header compact & < 15% mobile viewport) */}
         <div
           role="tablist"
@@ -1051,6 +1066,7 @@ export default function App() {
             onResetWorkspace={handleResetFieldDocWorkspace}
             onSaveArchive={handleSaveFieldDocArchive}
             onExportDocx={() => handleExportFieldDoc('docx')}
+            onExportExcel={() => handleExportFieldDoc('xlsx')}
             onExportPdf={() => handleExportFieldDoc('pdf')}
             onToast={showToast}
           />

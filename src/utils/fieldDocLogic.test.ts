@@ -13,7 +13,10 @@ import {
   sanitizeLocalReports,
   wrapCanvasLines,
 } from './fieldDocLogic.ts';
-import { buildFieldDocDocxBlob } from './fieldDocExport.ts';
+import {
+  buildFieldDocDocxBlob,
+  buildFieldDocExcelBlob,
+} from './fieldDocExport.ts';
 
 test('buildItemsList includes 20 systems and prepends optional site prefix to asset tags', () => {
   const withoutPrefix = buildItemsList('');
@@ -98,12 +101,21 @@ test('buildCloudShareUrl and parseCloudAutoConnectParam round-trip cloud config 
   });
 });
 
-test('wrapCanvasLines wraps long strings cleanly within max width', () => {
-  const lines = wrapCanvasLines((t) => t.length * 8, 'Pengecekan unit pompa chiller lantai basement gedung utama', 160);
+test('wrapCanvasLines wraps long strings and splits unbroken tokens strictly within max width', () => {
+  const lines = wrapCanvasLines(
+    (t) => t.length * 8,
+    'Pengecekan unit pompa chiller lantai basement gedung utama',
+    160
+  );
   assert.ok(lines.length >= 2);
+
+  const unbroken = 'CHWP-SERIALNUMBER-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-END';
+  const splitLines = wrapCanvasLines((t) => t.length * 8, unbroken, 120);
+  assert.ok(splitLines.length >= 3);
+  assert.ok(splitLines.every((l) => l.length * 8 <= 120));
 });
 
-test('buildFieldDocDocxBlob produces valid OOXML docx zip archive', async () => {
+test('buildFieldDocDocxBlob produces valid OOXML docx zip archive even with long multi-line descriptions', async () => {
   const report = createFreshFieldDocReport({
     title: 'Inspeksi Visual CHWP-01',
     wmLoc: 'Chiller Room Basement',
@@ -111,10 +123,28 @@ test('buildFieldDocDocxBlob produces valid OOXML docx zip archive', async () => 
     email: 'teknisi@facility.local',
     date: '2026-11-26',
   });
-  report.slots[0].desc = 'Kondisi unit pompa bersih dan tidak ada kebocoran.';
+  report.slots[0].desc =
+    'Kondisi unit pompa bersih dan tidak ada kebocoran.\nSerialCode: SN-99887766554433221100AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTT\nCatatan tambahan inspeksi suhu bearing pompa 48C.';
   const blob = await buildFieldDocDocxBlob(report);
   assert.ok(blob.size > 3000, `Expected docx > 3KB, got ${blob.size}`);
   const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
   assert.equal(header[0], 0x50); // 'P'
   assert.equal(header[1], 0x4b); // 'K' (ZIP magic header)
+});
+
+test('buildFieldDocExcelBlob generates valid print-ready .xlsx archive with long photo descriptions', async () => {
+  const report = createFreshFieldDocReport({
+    title: 'Dokumentasi FCU-11.1 Trafo A',
+    wmLoc: 'Trafo Room A',
+    author: 'M. Salman. A',
+    email: 'teknisi@facility.local',
+    date: '2026-11-26',
+  });
+  report.slots[0].desc =
+    'Baris 1: Filter udara dibersihkan.\nBaris 2: Pengecekan drain pan lancar.\nBaris 3: Amperemeter normal 2.4A dengan nomor seri UNIT-FCU-TRAFO-A-2026-000111222333444555.';
+  const blob = await buildFieldDocExcelBlob(report);
+  assert.ok(blob.size > 3000, `Expected xlsx > 3KB, got ${blob.size}`);
+  const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  assert.equal(header[0], 0x50); // 'P'
+  assert.equal(header[1], 0x4b); // 'K'
 });

@@ -185,7 +185,7 @@ export function PrintReport({
             return (
               <tr key={item.id} className={zebraBg}>
                 <td className="text-center font-mono-num">{idx + 1}</td>
-                <td className="break-words">{item.equipmentCategory}</td>
+                <td className="break-words [overflow-wrap:anywhere]">{item.equipmentCategory}</td>
                 <td
                   className="text-center font-bold break-words"
                   style={{
@@ -195,8 +195,8 @@ export function PrintReport({
                 >
                   {item.frequency}
                 </td>
-                <td className="break-words">{item.category}</td>
-                <td className="break-words">{item.taskDescription}</td>
+                <td className="break-words [overflow-wrap:anywhere]">{item.category}</td>
+                <td className="break-words [overflow-wrap:anywhere]">{item.taskDescription}</td>
                 <td
                   className={`text-center font-extrabold text-[11pt] ${
                     item.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : ''
@@ -233,7 +233,7 @@ export function PrintReport({
                   {item.status === 'N/A' ? '✓' : ''}
                 </td>
                 <td
-                  className={`break-words ${
+                  className={`break-words [overflow-wrap:anywhere] ${
                     isCritical
                       ? 'bg-red-50 text-red-900 font-semibold'
                       : isMinor

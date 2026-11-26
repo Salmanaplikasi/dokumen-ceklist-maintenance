@@ -1,0 +1,6 @@
+{
+  "name": "Checklist Preventive Maintenance",
+  "description": "Aplikasi checklist inspeksi preventive maintenance gedung dan fasilitas untuk teknisi lapangan dengan penyimpanan otomatis offline dan ekspor Excel, Word, serta PDF.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

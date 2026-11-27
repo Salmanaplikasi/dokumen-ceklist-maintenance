@@ -1,0 +1,266 @@
+{
+  "entities": {
+    "FieldDocReport": {
+      "title": "FieldDocReport",
+      "description": "Metadata and summary of a FieldDoc photo documentation report stored in team archive.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document identifier matching ^[a-zA-Z0-9_\\-]+$.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the report creator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Visibility scope of the report.",
+          "enum": ["team", "private"]
+        },
+        "org": {
+          "type": "string",
+          "description": "Organization header / corporate kop text.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "site": {
+          "type": "string",
+          "description": "Optional site prefix code.",
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "description": "Work order or equipment title.",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "wmOn": {
+          "type": "boolean",
+          "description": "Whether Conota watermark stamping is enabled."
+        },
+        "wmLoc": {
+          "type": "string",
+          "description": "Location or room name stamped on photos.",
+          "maxLength": 200
+        },
+        "wmGps": {
+          "type": "string",
+          "description": "GPS coordinate string.",
+          "maxLength": 160
+        },
+        "author": {
+          "type": "string",
+          "description": "Display name or initials of technician.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "roleLabel": {
+          "type": "string",
+          "description": "Non-PII job role or unit label.",
+          "maxLength": 120
+        },
+        "slotCount": {
+          "type": "number",
+          "description": "Total number of photo slots in the report (1..50)."
+        },
+        "filledCount": {
+          "type": "number",
+          "description": "Count of slots containing an image (0..50)."
+        },
+        "clientUpdatedMs": {
+          "type": "number",
+          "description": "Client millisecond timestamp for deterministic sorting."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp validated via request.time."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp validated via request.time."
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "visibility",
+        "org",
+        "site",
+        "title",
+        "date",
+        "wmOn",
+        "wmLoc",
+        "wmGps",
+        "author",
+        "roleLabel",
+        "slotCount",
+        "filledCount",
+        "clientUpdatedMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FieldDocSlot": {
+      "title": "FieldDocSlot",
+      "description": "Individual photo slot with compressed JPEG data URL and technical description.",
+      "type": "object",
+      "properties": {
+        "reportId": {
+          "type": "string",
+          "description": "Parent FieldDocReport document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Parent report owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Mirrors parent report visibility.",
+          "enum": ["team", "private"]
+        },
+        "slotIndex": {
+          "type": "number",
+          "description": "Zero-based slot order (0..49)."
+        },
+        "img": {
+          "type": "string",
+          "description": "Watermarked compressed JPEG data URL or empty string.",
+          "maxLength": 450000
+        },
+        "desc": {
+          "type": "string",
+          "description": "Technical inspection notes for this photo slot.",
+          "maxLength": 4000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp validated via request.time."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp validated via request.time."
+        }
+      },
+      "required": [
+        "reportId",
+        "ownerUid",
+        "visibility",
+        "slotIndex",
+        "img",
+        "desc",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Private user PII profile isolated per user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Technician display name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "description": "Verified user email address.",
+          "maxLength": 200
+        },
+        "roleLabel": {
+          "type": "string",
+          "description": "Job title or team role label.",
+          "maxLength": 120
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp validated via request.time."
+        }
+      },
+      "required": ["uid", "displayName", "email", "roleLabel", "updatedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Explicit admin registry document keyed by user UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "grantedAt"]
+    },
+    "ConnectionProbe": {
+      "title": "ConnectionProbe",
+      "description": "Read-only connection validation document.",
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": ["ok"]
+    }
+  },
+  "firestore": {
+    "/fielddoc_reports/{reportId}": {
+      "schema": { "$ref": "#/entities/FieldDocReport" },
+      "description": "Shared team and private FieldDoc inspection reports."
+    },
+    "/fielddoc_reports/{reportId}/slots/{slotId}": {
+      "schema": { "$ref": "#/entities/FieldDocSlot" },
+      "description": "Photo slots belonging to a parent FieldDocReport."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateProfile" },
+      "description": "Isolated PII profile storage readable and writable only by owner or admin."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Read-only admin membership records."
+    },
+    "/test/{docId}": {
+      "schema": { "$ref": "#/entities/ConnectionProbe" },
+      "description": "Connection health probe document for startup verification."
+    }
+  }
+}

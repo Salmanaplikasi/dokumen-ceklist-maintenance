@@ -211,6 +211,11 @@ export function sanitizeLocalReports(rawJson: string | null): {
       author: typeof item.author === 'string' ? item.author : 'M. Salman. A',
       email: typeof item.email === 'string' ? item.email : 'Teknisi Lapangan',
       updated: typeof item.updated === 'number' ? item.updated : 0,
+      ownerUid: typeof item.ownerUid === 'string' ? item.ownerUid : undefined,
+      visibility: item.visibility === 'private' ? 'private' : 'team',
+      slotCount: typeof item.slotCount === 'number' ? item.slotCount : undefined,
+      filledCount: typeof item.filledCount === 'number' ? item.filledCount : undefined,
+      syncStatus: item.syncStatus === 'synced' ? 'synced' : 'local-only',
     });
   });
 
@@ -344,3 +349,123 @@ export function estimateWrappedLineCount(
   );
   return Math.max(1, lines.length);
 }
+
+/**
+ * Merges locally archived reports with cloud reports non-destructively:
+ * - Never drops unsynced local-only reports so existing local Arsip Tim stays intact.
+ * - Preserves locally cached photo slots if cloud summary metadata has not yet hydrated subcollection slots.
+ * - Keeps the newest version when both local and cloud have the same report ID.
+ */
+export function mergeLocalAndCloudReports(
+  localReports: FieldDocReport[],
+  cloudReports: FieldDocReport[]
+): FieldDocReport[] {
+  const byId = new Map<string, FieldDocReport>();
+
+  for (const local of localReports) {
+    if (!local.id) continue;
+    byId.set(String(local.id), {
+      ...local,
+      id: String(local.id),
+      syncStatus: local.syncStatus ?? 'local-only',
+    });
+  }
+
+  for (const cloud of cloudReports) {
+    if (!cloud.id) continue;
+    const id = String(cloud.id);
+    const existing = byId.get(id);
+    const cloudSlots = Array.isArray(cloud.slots) ? cloud.slots : [];
+    const existingSlots = existing && Array.isArray(existing.slots) ? existing.slots : [];
+
+    const cloudHasImages = cloudSlots.some((s) => Boolean(s.img));
+    const existingHasImages = existingSlots.some((s) => Boolean(s.img));
+
+    const resolvedSlots =
+      cloudHasImages || existingSlots.length === 0
+        ? cloudSlots
+        : existingSlots;
+
+    if (!existing || (cloud.updated || 0) >= (existing.updated || 0)) {
+      byId.set(id, {
+        ...cloud,
+        id,
+        slots: resolvedSlots.length > 0 ? resolvedSlots : cloudSlots,
+        syncStatus: 'synced',
+      });
+    } else {
+      byId.set(id, {
+        ...existing,
+        ownerUid: existing.ownerUid || cloud.ownerUid,
+        visibility: existing.visibility || cloud.visibility || 'team',
+        syncStatus: 'local-only',
+      });
+    }
+  }
+
+  return Array.from(byId.values()).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+}
+
+/**
+ * Clamps all fields of a FieldDocReport strictly within the limits declared in firebase-blueprint.json
+ * and firestore.rules so Firestore mutations never fail schema bounds.
+ */
+export function clampFieldDocReportForCloud(
+  report: FieldDocReport,
+  fallbackOwnerUid: string
+): {
+  id: string;
+  ownerUid: string;
+  visibility: 'team' | 'private';
+  org: string;
+  site: string;
+  title: string;
+  date: string;
+  wmOn: boolean;
+  wmLoc: string;
+  wmGps: string;
+  author: string;
+  roleLabel: string;
+  slotCount: number;
+  filledCount: number;
+  clientUpdatedMs: number;
+  slots: Array<{ slotIndex: number; img: string; desc: string }>;
+} {
+  const safeId =
+    (report.id || `rep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`)
+      .replace(/[^a-zA-Z0-9_\-]/g, '_')
+      .slice(0, 128) || `rep_${Date.now()}`;
+  const rawOwner = (report.ownerUid || fallbackOwnerUid).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 128);
+  const clampedSlots = (Array.isArray(report.slots) && report.slots.length > 0
+    ? report.slots
+    : [createBlankSlot()]
+  )
+    .slice(0, 50)
+    .map((s, idx) => ({
+      slotIndex: idx,
+      img: typeof s.img === 'string' && s.img.length <= 450000 ? s.img : '',
+      desc: String(s.desc || '').slice(0, 4000),
+    }));
+
+  const filledCount = clampedSlots.filter((s) => Boolean(s.img)).length;
+
+  return {
+    id: safeId,
+    ownerUid: rawOwner,
+    visibility: report.visibility === 'private' ? 'private' : 'team',
+    org: (report.org || DEFAULT_FIELDDOC_ORG).trim().slice(0, 200) || DEFAULT_FIELDDOC_ORG,
+    site: String(report.site || '').slice(0, 64),
+    title: (report.title || 'Laporan Dokumentasi Pekerjaan').trim().slice(0, 250) || 'Laporan Dokumentasi Pekerjaan',
+    date: (report.date || todayIso()).slice(0, 32),
+    wmOn: Boolean(report.wmOn),
+    wmLoc: String(report.wmLoc || '').slice(0, 200),
+    wmGps: String(report.wmGps || '').slice(0, 160),
+    author: (report.author || 'Teknisi Lapangan').trim().slice(0, 120) || 'Teknisi Lapangan',
+    roleLabel: String(report.email || 'Teknisi Lapangan').slice(0, 120),
+    slotCount: clampedSlots.length,
+    filledCount,
+    clientUpdatedMs: typeof report.updated === 'number' && report.updated >= 0 ? report.updated : Date.now(),
+    slots: clampedSlots,
+  };
+}
+

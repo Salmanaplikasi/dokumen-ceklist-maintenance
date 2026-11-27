@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  CheckCircle2,
   Cloud,
-  Copy,
-  Link2,
+  LogIn,
+  LogOut,
+  RefreshCw,
+  ShieldCheck,
   User,
   X,
 } from 'lucide-react';
-import type { FieldDocCloudConfig } from '../types/fielddoc.ts';
-import { buildCloudShareUrl } from '../utils/fieldDocLogic.ts';
+import type { CloudConnectionState } from '../types/fielddoc.ts';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -122,7 +124,7 @@ export function FieldDocProfileModal({
             </div>
             <div>
               <h3 id="fdoc-prof-title" className="text-base font-extrabold text-slate-900">
-                Identitas Pelapor &amp; Email
+                Identitas Pelapor &amp; Keterangan
               </h3>
               <p className="text-xs text-slate-600">
                 Digunakan pada watermark foto, ekspor dokumen, dan Arsip Tim.
@@ -152,12 +154,12 @@ export function FieldDocProfileModal({
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-xs font-bold text-slate-700">Keterangan / Email</span>
+            <span className="text-xs font-bold text-slate-700">Jabatan / Keterangan</span>
             <input
               type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Contoh: teknisi@perusahaan.com"
+              placeholder="Contoh: Teknisi Lapangan"
               className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </label>
@@ -188,38 +190,29 @@ export function FieldDocProfileModal({
 
 interface CloudModalProps {
   isOpen: boolean;
-  initialConfig: FieldDocCloudConfig | null;
+  cloudStatus: CloudConnectionState;
+  totalReportsCount: number;
+  localOnlyCount: number;
+  authBusy?: boolean;
+  syncBusy?: boolean;
   onClose: () => void;
-  onConnect: (cfg: FieldDocCloudConfig) => Promise<void>;
-  onDisconnect: () => Promise<void>;
-  onToast: (msg: string, isError?: boolean) => void;
+  onSignInGoogle: () => Promise<void>;
+  onSignOutGoogle: () => Promise<void>;
+  onSyncLocalNow: () => Promise<void>;
 }
 
 export function FieldDocCloudModal({
   isOpen,
-  initialConfig,
+  cloudStatus,
+  totalReportsCount,
+  localOnlyCount,
+  authBusy = false,
+  syncBusy = false,
   onClose,
-  onConnect,
-  onDisconnect,
-  onToast,
+  onSignInGoogle,
+  onSignOutGoogle,
+  onSyncLocalNow,
 }: CloudModalProps) {
-  const [apiKey, setApiKey] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [room, setRoom] = useState('tim_fasilitas_1');
-  const [consent, setConsent] = useState(false);
-  const [shareUrlPreview, setShareUrlPreview] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setApiKey(initialConfig?.apiKey || '');
-      setProjectId(initialConfig?.projectId || '');
-      setRoom(initialConfig?.room || 'tim_fasilitas_1');
-      setConsent(Boolean(initialConfig?.consent));
-      setShareUrlPreview('');
-    }
-  }, [isOpen, initialConfig]);
-
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -231,46 +224,13 @@ export function FieldDocCloudModal({
 
   if (!isOpen) return null;
 
-  const handleCopyShareLink = async () => {
-    if (!apiKey.trim() || !projectId.trim()) {
-      onToast('Isi Firebase API Key dan Project ID terlebih dahulu.', true);
-      return;
-    }
-    const url = buildCloudShareUrl(window.location.origin, window.location.pathname, {
-      apiKey,
-      projectId,
-      room: room || 'tim_fasilitas_1',
-    });
-    setShareUrlPreview(url);
-    try {
-      await navigator.clipboard.writeText(url);
-      onToast('Link Auto-Connect berhasil disalin ke clipboard.');
-    } catch {
-      onToast('Link Auto-Connect dibuat — salin dari kotak di bawah.');
-    }
-  };
+  const currentHost =
+    typeof window !== 'undefined' && window.location.hostname
+      ? window.location.hostname
+      : 'domain Vercel Anda';
 
-  const handleSubmit = async () => {
-    if (!apiKey.trim() || !projectId.trim()) {
-      onToast('Harap isi Firebase API Key dan Project ID.', true);
-      return;
-    }
-    if (!consent) {
-      onToast('Harap centang persetujuan sinkronisasi data.', true);
-      return;
-    }
-    setSaving(true);
-    try {
-      await onConnect({
-        apiKey: apiKey.trim(),
-        projectId: projectId.trim(),
-        room: room.trim() || 'tim_fasilitas_1',
-        consent,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const isConnected = cloudStatus.mode === 'connected';
+  const syncedCount = Math.max(0, totalReportsCount - localOnlyCount);
 
   return (
     <div
@@ -282,126 +242,156 @@ export function FieldDocCloudModal({
       <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                isConnected
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-blue-50 text-blue-700'
+              }`}
+            >
               <Cloud className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
               <h3 id="fdoc-cloud-title" className="text-base font-extrabold text-slate-900">
-                Pengaturan Cloud Privat Tim (Firebase)
+                Status Sinkronisasi Online Tim (Firebase)
               </h3>
               <p className="text-xs text-slate-600">
-                Sinkronisasi arsip FieldDoc real-time antar-perangkat melalui Firestore tim Anda.
+                Database online sudah terpasang otomatis agar seluruh tim di Vercel dapat mengakses Arsip Tim bersama.
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Tutup pengaturan cloud"
+            aria-label="Tutup status sinkronisasi"
             className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="space-y-3">
-          <label className="block space-y-1">
-            <span className="text-xs font-bold text-slate-700">Firebase API Key</span>
-            <input
-              type="text"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="AIzaSy..."
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-bold text-slate-700">Firebase Project ID</span>
-            <input
-              type="text"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              placeholder="nama-project-firebase"
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-bold text-slate-700">Kode Ruang Kerja Tim</span>
-            <input
-              type="text"
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              placeholder="tim_fasilitas_1"
-              className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-          </label>
-
-          <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-blue-700 rounded"
-            />
-            <span className="text-xs text-slate-700 leading-relaxed">
-              Saya menyetujui sinkronisasi data laporan dokumentasi otomatis ke database Firebase privat tim ini.
+        <div
+          className={`rounded-xl border p-4 space-y-2 ${
+            isConnected
+              ? 'bg-emerald-50/70 border-emerald-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+              Status Koneksi
             </span>
-          </label>
-        </div>
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs font-extrabold ${
+                isConnected ? 'text-emerald-700' : 'text-blue-800'
+              }`}
+            >
+              {isConnected ? (
+                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              <span>{cloudStatus.label}</span>
+            </span>
+          </div>
 
-        <div className="space-y-2 pt-1">
-          <button
-            type="button"
-            onClick={handleCopyShareLink}
-            className="w-full min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Link2 className="w-4 h-4 text-blue-700 shrink-0" aria-hidden="true" />
-            <span>Salin Link Auto-Connect untuk Perangkat Lain</span>
-          </button>
+          {cloudStatus.mode === 'connected' && cloudStatus.userEmail && (
+            <p className="text-xs text-slate-700">
+              Akun aktif: <strong className="text-slate-900">{cloudStatus.userEmail}</strong>
+            </p>
+          )}
 
-          {shareUrlPreview && (
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2">
-              <input
-                type="text"
-                readOnly
-                value={shareUrlPreview}
-                onFocus={(e) => e.currentTarget.select()}
-                aria-label="Link Auto-Connect"
-                className="flex-1 bg-transparent text-xs font-mono text-slate-700 focus:outline-none"
-              />
-              <Copy className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
-            </div>
+          {cloudStatus.mode === 'auth-required' && (
+            <p className="text-xs text-slate-700 leading-relaxed">
+              Masuk dengan akun Google untuk mengaktifkan penyimpanan &amp; baca Arsip Tim secara online. Arsip lokal yang sudah ada di perangkat tidak akan dihapus dan otomatis diunggah setelah login.
+            </p>
+          )}
+
+          {cloudStatus.mode === 'disconnected' && (
+            <p className="text-xs text-slate-700 leading-relaxed">
+              Perangkat sedang offline atau jaringan terputus. Anda tetap dapat menyimpan ke arsip lokal dan sistem akan menyinkronkan otomatis saat online kembali.
+            </p>
           )}
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+            <p className="text-[11px] font-bold text-slate-500 uppercase">Tersimpan Online</p>
+            <p className="text-lg font-extrabold text-emerald-700 font-mono-num">
+              {syncedCount} Laporan
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+            <p className="text-[11px] font-bold text-slate-500 uppercase">Menunggu Sync Lokal</p>
+            <p className="text-lg font-extrabold text-amber-700 font-mono-num">
+              {localOnlyCount} Laporan
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 pt-1">
+          {cloudStatus.mode === 'connected' ? (
+            <button
+              type="button"
+              disabled={syncBusy}
+              onClick={() => void onSyncLocalNow()}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RefreshCw
+                className={`w-4 h-4 shrink-0 ${syncBusy ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
+              <span>
+                {syncBusy
+                  ? 'Menyinkronkan Arsip Lokal...'
+                  : 'Sinkronkan Arsip Lokal Sekarang'}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={authBusy}
+              onClick={() => void onSignInGoogle()}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>
+                {authBusy
+                  ? 'Membuka Login Google...'
+                  : 'Masuk dengan Google (Aktifkan Arsip Online)'}
+              </span>
+            </button>
+          )}
+        </div>
+
+        <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          Catatan deploy Vercel: bila login Google menampilkan pesan domain belum terdaftar, tambahkan domain <strong className="font-mono text-slate-700">{currentHost}</strong> di Firebase Console &rarr; Authentication &rarr; Settings &rarr; Authorized domains.
+        </p>
+
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          {cloudStatus.mode === 'connected' ? (
+            <button
+              type="button"
+              disabled={authBusy}
+              onClick={() => void onSignOutGoogle()}
+              className="min-h-[44px] px-4 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-700 font-bold text-sm inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>Keluar Akun Google</span>
+            </button>
+          ) : (
+            <span className="text-xs text-slate-500 font-medium">
+              Arsip lokal di perangkat tetap aman.
+            </span>
+          )}
+
           <button
             type="button"
-            onClick={() => void onDisconnect()}
-            className="min-h-[44px] px-4 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-700 font-bold text-sm cursor-pointer"
+            onClick={onClose}
+            className="min-h-[44px] px-5 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-sm cursor-pointer"
           >
-            Putuskan
+            Tutup
           </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-sm cursor-pointer"
-            >
-              Tutup
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSubmit()}
-              className="min-h-[44px] px-5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white font-bold text-sm cursor-pointer"
-            >
-              {saving ? 'Menghubungkan...' : 'Hubungkan'}
-            </button>
-          </div>
         </div>
       </div>
     </div>

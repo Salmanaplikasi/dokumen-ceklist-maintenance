@@ -16,6 +16,11 @@ export interface FieldDocReport {
   author: string;
   email: string;
   updated?: number;
+  ownerUid?: string;
+  visibility?: 'team' | 'private';
+  slotCount?: number;
+  filledCount?: number;
+  syncStatus?: 'synced' | 'local-only';
 }
 
 export interface FieldDocAssetItem {
@@ -44,6 +49,7 @@ export interface CachedGpsPosition {
 
 export type CloudConnectionState =
   | { mode: 'local'; label: string }
-  | { mode: 'connected'; label: string; room: string }
+  | { mode: 'auth-required'; label: string }
+  | { mode: 'connected'; label: string; room: string; userEmail?: string; uid?: string }
   | { mode: 'disconnected'; label: string }
   | { mode: 'invalid'; label: string };

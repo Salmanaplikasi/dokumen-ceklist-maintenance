@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   LocateFixed,
+  LogIn,
   MapPin,
   Plus,
   RotateCcw,
@@ -44,10 +45,12 @@ interface FieldDocWorkspaceProps {
   isEditingArchive: boolean;
   isOnline: boolean;
   cloudStatus: CloudConnectionState;
+  authBusy?: boolean;
   busyExport: boolean;
   onUpdateReport: (updater: (prev: FieldDocReport) => FieldDocReport) => void;
   onOpenProfileModal: () => void;
   onOpenCloudModal: () => void;
+  onSignInGoogle: () => Promise<void>;
   onFetchGps: () => Promise<void>;
   gpsLoading: boolean;
   onAddSlot: () => void;
@@ -66,10 +69,12 @@ export function FieldDocWorkspace({
   isEditingArchive,
   isOnline,
   cloudStatus,
+  authBusy = false,
   busyExport,
   onUpdateReport,
   onOpenProfileModal,
   onOpenCloudModal,
+  onSignInGoogle,
   onFetchGps,
   gpsLoading,
   onAddSlot,
@@ -180,19 +185,25 @@ export function FieldDocWorkspace({
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span className="font-bold text-slate-900">FieldDoc Utility</span>
             <span aria-hidden="true">·</span>
-            <span>Auto-Sync Lokal &amp; Cloud Privat</span>
+            <span>Auto-Sync Lokal &amp; Arsip Online Tim</span>
             <span aria-hidden="true">·</span>
-            <span
-              className={`font-semibold inline-flex items-center gap-1 ${
-                cloudStatus.mode === 'connected' ? 'text-emerald-700' : 'text-slate-600'
+            <button
+              type="button"
+              onClick={onOpenCloudModal}
+              className={`font-semibold inline-flex items-center gap-1 hover:underline cursor-pointer ${
+                cloudStatus.mode === 'connected'
+                  ? 'text-emerald-700'
+                  : cloudStatus.mode === 'auth-required'
+                    ? 'text-blue-700'
+                    : 'text-slate-600'
               }`}
             >
               <Cloud className="w-3.5 h-3.5" aria-hidden="true" />
-              {cloudStatus.label}
-            </span>
+              <span>{cloudStatus.label}</span>
+            </button>
           </div>
           <p className="text-xs sm:text-sm text-slate-600">
-            Dokumentasi foto lapangan dengan watermark GPS &amp; waktu otomatis, siap ekspor ke Excel (.xlsx), Word (.docx), dan PDF.
+            Dokumentasi foto lapangan dengan watermark GPS &amp; waktu otomatis, tersimpan online ke Arsip Tim dan siap ekspor ke Excel, Word, atau PDF.
           </p>
         </div>
 
@@ -206,14 +217,30 @@ export function FieldDocWorkspace({
             <span>{report.author}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onOpenCloudModal}
-            className="min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap"
-          >
-            <Cloud className="w-4 h-4 text-slate-600 shrink-0" aria-hidden="true" />
-            <span>Koneksi Cloud</span>
-          </button>
+          {cloudStatus.mode === 'auth-required' ? (
+            <button
+              type="button"
+              disabled={authBusy}
+              onClick={() => void onSignInGoogle()}
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <LogIn className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>{authBusy ? 'Masuk...' : 'Masuk Google'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenCloudModal}
+              className={`min-h-[44px] px-3.5 py-2 rounded-xl border text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                cloudStatus.mode === 'connected'
+                  ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800'
+                  : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-800'
+              }`}
+            >
+              <Cloud className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>Status Sync</span>
+            </button>
+          )}
         </div>
       </section>
 
@@ -692,7 +719,7 @@ export function FieldDocWorkspace({
             Ekspor Dokumentasi &amp; Simpan Arsip
           </h3>
           <p className="text-xs sm:text-sm text-slate-600">
-            Unduh foto &amp; deskripsi rapi dalam Excel (.xlsx), Word (.docx), atau PDF siap cetak, atau simpan ke Arsip Tim.
+            Unduh foto &amp; deskripsi rapi dalam Excel (.xlsx), Word (.docx), atau PDF, serta simpan ke Arsip Tim online (tetap aman di perangkat saat offline).
           </p>
         </div>
 

@@ -52,14 +52,13 @@ import {
 } from './utils/fieldDocLogic';
 import {
   FieldDocStorageEngine,
-  checkUrlAutoConnectConfig,
-  clearPrivateCloudConfig,
-  getPrivateCloudConfig,
   getSanitizedLocalReports,
-  initPrivateFirebaseConnection,
-  savePrivateCloudConfig,
-  stopPrivateFirebaseConnection,
+  initOnlineFirebaseSync,
+  loadReportWithSlots,
+  stopOnlineFirebaseSync,
+  syncLocalArchiveToCloud,
 } from './utils/fieldDocStorage';
+import { signInWithGoogle, signOutGoogle } from './utils/firebaseClient';
 import { exportFieldDocFile } from './utils/fieldDocExport';
 import {
   fetchLiveGpsCoords,
@@ -175,6 +174,9 @@ export default function App() {
   const [offlineReady, setOfflineReady] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [busyFieldDocExport, setBusyFieldDocExport] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [loadingArchiveId, setLoadingArchiveId] = useState<string | null>(null);
   const [isFieldDocProfileOpen, setIsFieldDocProfileOpen] = useState(false);
   const [isFieldDocCloudOpen, setIsFieldDocCloudOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
@@ -241,49 +243,69 @@ export default function App() {
 
     if (!fieldDocReport.title.trim()) return;
     const timer = window.setTimeout(() => {
-      void FieldDocStorageEngine.saveReport(fieldDocReport).then((saved) => {
-        setFieldDocReport((prev) =>
-          prev.id === saved.id ? prev : { ...prev, id: saved.id }
-        );
-        setArchiveReports(getSanitizedLocalReports());
-      });
+      void FieldDocStorageEngine.saveReport(fieldDocReport)
+        .then((saved) => {
+          setFieldDocReport((prev) =>
+            prev.id === saved.id ? prev : { ...prev, id: saved.id }
+          );
+          setArchiveReports(FieldDocStorageEngine.getReports());
+        })
+        .catch(() => {
+          setArchiveReports(FieldDocStorageEngine.getReports());
+        });
     }, 350);
 
     return () => window.clearTimeout(timer);
   }, [fieldDocReport]);
 
-  // Initialize FieldDoc Cloud Sync & Online/Offline GPS handlers
+  // Initialize Built-In Online Firebase Sync & Online/Offline GPS handlers
   useEffect(() => {
-    checkUrlAutoConnectConfig();
-
-    const connectCloud = async () => {
-      await initPrivateFirebaseConnection(
-        (cloudList) => {
-          setArchiveReports(cloudList);
+    const startOnlineSync = () => {
+      initOnlineFirebaseSync({
+        onReportsMerged: (mergedList) => {
+          setArchiveReports(mergedList);
         },
-        (status) => {
+        onStatusChange: (status) => {
           setCloudStatus(status);
-        }
-      );
-      setArchiveReports((prev) => FieldDocStorageEngine.getReports(prev));
+        },
+        onLocalMigrated: (uploadedCount) => {
+          setArchiveReports(FieldDocStorageEngine.getReports());
+          showToast(
+            `${uploadedCount} arsip lokal otomatis disinkronkan ke Arsip Tim Online.`
+          );
+        },
+        onError: (msg) => {
+          showToast(msg, true);
+        },
+      });
     };
 
-    void connectCloud();
+    startOnlineSync();
 
     const handleOnline = async () => {
       setIsOnline(true);
-      showToast('Terhubung ke internet. Menyinkronkan FieldDoc otomatis...');
-      await connectCloud();
+      showToast('Terhubung ke internet. Menyinkronkan Arsip Tim...');
+      startOnlineSync();
       const current = latestReportRef.current;
       if (current.title.trim()) {
-        const saved = await FieldDocStorageEngine.saveReport(current);
-        setFieldDocReport((prev) => ({ ...prev, id: saved.id }));
-        setArchiveReports(getSanitizedLocalReports());
+        try {
+          const saved = await FieldDocStorageEngine.saveReport(current);
+          setFieldDocReport((prev) => ({ ...prev, id: saved.id }));
+        } catch {
+          // Local copy already saved
+        }
       }
+      await syncLocalArchiveToCloud();
+      setArchiveReports(FieldDocStorageEngine.getReports());
     };
 
     const handleOffline = () => {
       setIsOnline(false);
+      setCloudStatus((prev) =>
+        prev.mode === 'connected'
+          ? { mode: 'disconnected', label: 'Offline (Arsip Lokal Tersimpan)' }
+          : prev
+      );
       const cached = getLastKnownOnlinePos();
       if (cached?.formatted) {
         setFieldDocReport((prev) => ({
@@ -306,7 +328,7 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('pwa:offline-ready', handleOfflineReady);
-      stopPrivateFirebaseConnection();
+      stopOnlineFirebaseSync();
     };
   }, [showToast]);
 
@@ -719,14 +741,23 @@ export default function App() {
     try {
       const saved = await FieldDocStorageEngine.saveReport(fieldDocReport);
       setFieldDocReport(saved);
-      setArchiveReports(getSanitizedLocalReports());
-      showToast('Laporan FieldDoc berhasil disimpan ke Arsip.');
+      setArchiveReports(FieldDocStorageEngine.getReports());
+      if (saved.syncStatus === 'synced') {
+        showToast('Laporan tersimpan online ke Arsip Tim!');
+      } else {
+        showToast(
+          cloudStatus.mode === 'auth-required'
+            ? 'Tersimpan di arsip lokal. Masuk Google agar tersimpan online untuk semua tim.'
+            : 'Laporan tersimpan aman di arsip lokal (akan sinkron saat online).'
+        );
+      }
     } catch {
-      showToast('Gagal menyimpan laporan FieldDoc.', true);
+      showToast('Gagal menyimpan laporan ke cloud, arsip lokal tetap aman.', true);
+      setArchiveReports(FieldDocStorageEngine.getReports());
     } finally {
       setBusyFieldDocExport(false);
     }
-  }, [busyFieldDocExport, fieldDocReport, showToast]);
+  }, [busyFieldDocExport, cloudStatus.mode, fieldDocReport, showToast]);
 
   const handleExportFieldDoc = useCallback(
     async (kind: 'docx' | 'pdf' | 'xlsx') => {
@@ -740,7 +771,7 @@ export default function App() {
       try {
         const saved = await FieldDocStorageEngine.saveReport(fieldDocReport);
         setFieldDocReport(saved);
-        setArchiveReports(getSanitizedLocalReports());
+        setArchiveReports(FieldDocStorageEngine.getReports());
         const filename = await exportFieldDocFile(saved, kind);
         const label =
           kind === 'docx'
@@ -759,18 +790,29 @@ export default function App() {
   );
 
   const handleEditArchivedReport = useCallback(
-    (item: FieldDocReport) => {
-      const cloned: FieldDocReport = JSON.parse(JSON.stringify(item));
-      setFieldDocReport({
-        ...cloned,
-        org: cloned.org || DEFAULT_FIELDDOC_ORG,
-        wmLoc: cloned.wmLoc || readLocalPref(FDOC_KEYS.wmLoc, 'Area Fasilitas Utama'),
-        wmGps: cloned.wmGps || getInitialGpsString(),
-        wmOn: cloned.wmOn === undefined ? true : cloned.wmOn,
-      });
-      setActiveModule('fielddoc');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast('Laporan arsip berhasil dimuat ke editor.');
+    async (item: FieldDocReport) => {
+      setLoadingArchiveId(item.id);
+      try {
+        const hydrated = await loadReportWithSlots(item);
+        const cloned: FieldDocReport = JSON.parse(JSON.stringify(hydrated));
+        setFieldDocReport({
+          ...cloned,
+          org: cloned.org || DEFAULT_FIELDDOC_ORG,
+          wmLoc: cloned.wmLoc || readLocalPref(FDOC_KEYS.wmLoc, 'Area Fasilitas Utama'),
+          wmGps: cloned.wmGps || getInitialGpsString(),
+          wmOn: cloned.wmOn === undefined ? true : cloned.wmOn,
+        });
+        setActiveModule('fielddoc');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast('Laporan arsip berhasil dimuat ke editor.');
+      } catch {
+        showToast('Gagal memuat foto arsip online, membuka data cache lokal.', true);
+        const cloned: FieldDocReport = JSON.parse(JSON.stringify(item));
+        setFieldDocReport(cloned);
+        setActiveModule('fielddoc');
+      } finally {
+        setLoadingArchiveId(null);
+      }
     },
     [showToast]
   );
@@ -784,15 +826,25 @@ export default function App() {
         onConfirm: () => {
           setConfirmState(null);
           if (!item.id) return;
-          void FieldDocStorageEngine.deleteReport(item.id).then(() => {
-            setArchiveReports((prev) =>
-              prev.filter((r) => String(r.id) !== String(item.id))
-            );
-            setFieldDocReport((prev) =>
-              String(prev.id) === String(item.id) ? { ...prev, id: null } : prev
-            );
-            showToast('Laporan berhasil dihapus dari Arsip.');
-          });
+          void FieldDocStorageEngine.deleteReport(
+            item.id,
+            item.visibility || 'team'
+          )
+            .then(() => {
+              setArchiveReports((prev) =>
+                prev.filter((r) => String(r.id) !== String(item.id))
+              );
+              setFieldDocReport((prev) =>
+                String(prev.id) === String(item.id) ? { ...prev, id: null } : prev
+              );
+              showToast('Laporan berhasil dihapus dari Arsip.');
+            })
+            .catch(() => {
+              showToast(
+                'Hanya pembuat laporan atau admin yang dapat menghapus laporan ini dari cloud.',
+                true
+              );
+            });
         },
       });
     },
@@ -814,31 +866,52 @@ export default function App() {
     [showToast]
   );
 
-  const handleConnectCloud = useCallback(
-    async (cfg: NonNullable<ReturnType<typeof getPrivateCloudConfig>>) => {
-      savePrivateCloudConfig(cfg);
-      setIsFieldDocCloudOpen(false);
-      const ok = await initPrivateFirebaseConnection(
-        (cloudList) => setArchiveReports(cloudList),
-        (status) => setCloudStatus(status)
-      );
-      if (ok) {
-        setArchiveReports((prev) => FieldDocStorageEngine.getReports(prev));
-        showToast('Terhubung ke Cloud Firebase Privat Tim.');
-      } else {
-        showToast('Gagal menghubungkan ke Firebase.', true);
-      }
-    },
-    [showToast]
-  );
-
-  const handleDisconnectCloud = useCallback(async () => {
-    clearPrivateCloudConfig();
-    stopPrivateFirebaseConnection();
-    setCloudStatus({ mode: 'local', label: 'Penyimpanan Lokal' });
-    setIsFieldDocCloudOpen(false);
-    showToast('Koneksi Cloud diputus (kembali ke mode lokal).');
+  const handleSignInGoogle = useCallback(async () => {
+    setAuthBusy(true);
+    try {
+      const res = await signInWithGoogle();
+      showToast(res.message, !res.ok);
+    } finally {
+      setAuthBusy(false);
+    }
   }, [showToast]);
+
+  const handleSignOutGoogle = useCallback(async () => {
+    setAuthBusy(true);
+    try {
+      await signOutGoogle();
+      setIsFieldDocCloudOpen(false);
+      showToast('Berhasil keluar dari akun Google. Arsip lokal tetap aman.');
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [showToast]);
+
+  const handleSyncLocalNow = useCallback(async () => {
+    if (syncBusy) return;
+    setSyncBusy(true);
+    try {
+      const { uploadedCount, failedCount } = await syncLocalArchiveToCloud();
+      setArchiveReports(FieldDocStorageEngine.getReports());
+      if (uploadedCount > 0) {
+        showToast(`${uploadedCount} arsip lokal berhasil diunggah ke Arsip Online Tim.`);
+      } else if (failedCount > 0) {
+        showToast(
+          'Sebagian arsip belum dapat disinkronkan. Periksa koneksi internet Anda.',
+          true
+        );
+      } else {
+        showToast('Seluruh arsip sudah tersinkronisasi online.');
+      }
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [syncBusy, showToast]);
+
+  const localOnlyCount = useMemo(
+    () => archiveReports.filter((r) => r.syncStatus !== 'synced').length,
+    [archiveReports]
+  );
 
   const currentViewLabel = `${
     filter.equipmentCategory === 'ALL' ? 'Semua Peralatan' : filter.equipmentCategory
@@ -1054,10 +1127,12 @@ export default function App() {
             isEditingArchive={Boolean(fieldDocReport.id)}
             isOnline={isOnline}
             cloudStatus={cloudStatus}
+            authBusy={authBusy}
             busyExport={busyFieldDocExport}
             onUpdateReport={setFieldDocReport}
             onOpenProfileModal={() => setIsFieldDocProfileOpen(true)}
             onOpenCloudModal={() => setIsFieldDocCloudOpen(true)}
+            onSignInGoogle={handleSignInGoogle}
             onFetchGps={handleFetchGps}
             gpsLoading={gpsLoading}
             onAddSlot={handleAddFieldDocSlot}
@@ -1076,13 +1151,18 @@ export default function App() {
           <FieldDocArchiveView
             reports={archiveReports}
             cloudStatus={cloudStatus}
+            localOnlyCount={localOnlyCount}
+            loadingReportId={loadingArchiveId}
+            authBusy={authBusy}
+            syncBusy={syncBusy}
             onRefresh={() => {
-              setArchiveReports(getSanitizedLocalReports());
-              showToast('Daftar arsip diperbarui.');
+              void handleSyncLocalNow();
             }}
-            onEditReport={handleEditArchivedReport}
+            onEditReport={(item) => void handleEditArchivedReport(item)}
             onDeleteReport={handleDeleteArchivedReport}
             onOpenCloudModal={() => setIsFieldDocCloudOpen(true)}
+            onSignInGoogle={handleSignInGoogle}
+            onSyncLocalNow={handleSyncLocalNow}
             onCreateNew={() => {
               resetFieldDocNow();
               setActiveModule('fielddoc');
@@ -1147,11 +1227,15 @@ export default function App() {
 
       <FieldDocCloudModal
         isOpen={isFieldDocCloudOpen}
-        initialConfig={getPrivateCloudConfig()}
+        cloudStatus={cloudStatus}
+        totalReportsCount={archiveReports.length}
+        localOnlyCount={localOnlyCount}
+        authBusy={authBusy}
+        syncBusy={syncBusy}
         onClose={() => setIsFieldDocCloudOpen(false)}
-        onConnect={handleConnectCloud}
-        onDisconnect={handleDisconnectCloud}
-        onToast={showToast}
+        onSignInGoogle={handleSignInGoogle}
+        onSignOutGoogle={handleSignOutGoogle}
+        onSyncLocalNow={handleSyncLocalNow}
       />
 
       <FieldDocConfirmModal

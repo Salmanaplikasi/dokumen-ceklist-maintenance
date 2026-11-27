@@ -3,11 +3,13 @@ import test from 'node:test';
 import {
   buildCloudShareUrl,
   buildItemsList,
+  clampFieldDocReportForCloud,
   createFreshFieldDocReport,
   filterArchiveReports,
   filterAssetItems,
   formatIndonesianDate,
   formatIndonesianFullDay,
+  mergeLocalAndCloudReports,
   parseCloudAutoConnectParam,
   sanitizeFieldDocFilename,
   sanitizeLocalReports,
@@ -70,6 +72,7 @@ test('sanitizeLocalReports handles corrupt JSON and deduplicates missing/duplica
   const ids = new Set(duped.reports.map((r) => r.id));
   assert.equal(ids.size, 3);
   assert.equal(duped.reports[0].title, 'Job B');
+  assert.equal(duped.reports[0].syncStatus, 'local-only');
 });
 
 test('filterArchiveReports searches title, room, date, and author case-insensitively', () => {
@@ -148,3 +151,104 @@ test('buildFieldDocExcelBlob generates valid print-ready .xlsx archive with long
   assert.equal(header[0], 0x50); // 'P'
   assert.equal(header[1], 0x4b); // 'K'
 });
+
+test('mergeLocalAndCloudReports preserves local-only items, newest local edits, and cached photos', () => {
+  const localOnly = {
+    ...createFreshFieldDocReport({ title: 'Arsip Lokal Lama', author: 'Salman' }),
+    id: 'local_1',
+    updated: 1000,
+    slots: [{ img: 'data:image/jpeg;base64,ABC', desc: 'Foto lokal' }],
+    syncStatus: 'local-only' as const,
+  };
+  const sharedLocalNewer = {
+    ...createFreshFieldDocReport({ title: 'Edit Lokal Terbaru', author: 'Salman' }),
+    id: 'shared_1',
+    updated: 5000,
+    slots: [{ img: 'data:image/jpeg;base64,NEWLOCAL', desc: 'Baru' }],
+    syncStatus: 'local-only' as const,
+  };
+  const sharedCloudOlder = {
+    ...createFreshFieldDocReport({ title: 'Versi Cloud Lama', author: 'Salman' }),
+    id: 'shared_1',
+    updated: 3000,
+    ownerUid: 'uid_123',
+    slots: [{ img: '', desc: '' }],
+    syncStatus: 'synced' as const,
+  };
+  const cachedWithLocalImgs = {
+    ...createFreshFieldDocReport({ title: 'Cached Photos', author: 'Budi' }),
+    id: 'shared_2',
+    updated: 2000,
+    slots: [{ img: 'data:image/jpeg;base64,CACHED', desc: 'Foto tersimpan lokal' }],
+    syncStatus: 'synced' as const,
+  };
+  const cloudSummaryNewer = {
+    ...createFreshFieldDocReport({ title: 'Cached Photos', author: 'Budi' }),
+    id: 'shared_2',
+    updated: 4000,
+    slotCount: 1,
+    filledCount: 1,
+    slots: [{ img: '', desc: '' }],
+    syncStatus: 'synced' as const,
+  };
+
+  const merged = mergeLocalAndCloudReports(
+    [localOnly, sharedLocalNewer, cachedWithLocalImgs],
+    [sharedCloudOlder, cloudSummaryNewer]
+  );
+
+  assert.equal(merged.length, 3);
+  const keptLocal = merged.find((r) => r.id === 'local_1');
+  assert.ok(keptLocal);
+  assert.equal(keptLocal.syncStatus, 'local-only');
+  assert.equal(keptLocal.slots[0].img, 'data:image/jpeg;base64,ABC');
+
+  const keptNewer = merged.find((r) => r.id === 'shared_1');
+  assert.ok(keptNewer);
+  assert.equal(keptNewer.title, 'Edit Lokal Terbaru');
+  assert.equal(keptNewer.ownerUid, 'uid_123');
+  assert.equal(keptNewer.syncStatus, 'local-only');
+
+  const keptImgs = merged.find((r) => r.id === 'shared_2');
+  assert.ok(keptImgs);
+  assert.equal(keptImgs.syncStatus, 'synced');
+  assert.equal(keptImgs.slots[0].img, 'data:image/jpeg;base64,CACHED');
+});
+
+test('clampFieldDocReportForCloud clamps oversized fields and IDs strictly inside blueprint bounds', () => {
+  const longDesc = 'x'.repeat(5000);
+  const hugeImg = `data:image/jpeg;base64,${'A'.repeat(460000)}`;
+  const report = {
+    ...createFreshFieldDocReport({
+      org: 'O'.repeat(300),
+      site: 'S'.repeat(100),
+      title: 'T'.repeat(400),
+      wmLoc: 'L'.repeat(300),
+      wmGps: 'G'.repeat(250),
+      author: 'A'.repeat(200),
+      email: 'E'.repeat(200),
+    }),
+    id: 'rep/invalid id!@#',
+    slots: [
+      { img: hugeImg, desc: longDesc },
+      { img: 'data:image/jpeg;base64,VALID', desc: 'Normal' },
+    ],
+  };
+
+  const clamped = clampFieldDocReportForCloud(report, 'uid/test user');
+  assert.match(clamped.id, /^[a-zA-Z0-9_-]{1,128}$/);
+  assert.match(clamped.ownerUid, /^[a-zA-Z0-9_-]{1,128}$/);
+  assert.equal(clamped.org.length, 200);
+  assert.equal(clamped.site.length, 64);
+  assert.equal(clamped.title.length, 250);
+  assert.equal(clamped.wmLoc.length, 200);
+  assert.equal(clamped.wmGps.length, 160);
+  assert.equal(clamped.author.length, 120);
+  assert.equal(clamped.roleLabel.length, 120);
+  assert.equal(clamped.slots[0].img, ''); // Oversized image dropped safely rather than failing batch
+  assert.equal(clamped.slots[0].desc.length, 4000);
+  assert.equal(clamped.slots[1].img, 'data:image/jpeg;base64,VALID');
+  assert.equal(clamped.filledCount, 1);
+  assert.equal(clamped.slotCount, 2);
+});
+

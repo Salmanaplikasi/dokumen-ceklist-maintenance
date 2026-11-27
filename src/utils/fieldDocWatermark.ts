@@ -180,7 +180,13 @@ export async function shrinkPhotoWithWatermark(
     ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
 
     drawConotaWatermark(ctx, W, H, state);
-    return canvas.toDataURL('image/jpeg', 0.75);
+    let dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    let quality = 0.65;
+    while (dataUrl.length > 430000 && quality >= 0.35) {
+      dataUrl = canvas.toDataURL('image/jpeg', quality);
+      quality -= 0.1;
+    }
+    return dataUrl;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
